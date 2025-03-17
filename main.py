@@ -19,13 +19,18 @@ from pypresence import exceptions as presence_exceptions
 # Discord application client ID
 CLIENT_ID = "YOUR ID HERE"
 # Refresh rate of script, can be used to reduce performance hit
-RATELIMIT = 1
+RATELIMIT = 2.5
 
 # API URLs and query strings
 MUSICBRAINZ_URL   = "https://musicbrainz.org/ws/2/release/?fmt=json&query="
 COVERARCHIVE_URL  = "https://coverartarchive.org/release/"
 MUSICBRAINZ_QUERY = "artist:\"{}\" AND release:\"{}\""
 
+PLAYER_WHITELIST = ["elisa"]
+
+musicbrainz_headers = {
+    "User-Agent" : "MPRIS-RPC/0.0.1 (https://github.com/sinsinewave/mpris-rpc) (Sigma1@tuta.io)"
+}
 
 log.info("Starting MPRIS-RPC")
 
@@ -39,18 +44,20 @@ class SongInfo(object):
         if cover_url:
             self.cover_url = cover_url
         else:
-            log.info("Fetching cover art")
+            log.info(f"Fetching cover art for \033[3m{artist} – {album}\033[0m")
             query = parse_url.quote(MUSICBRAINZ_QUERY.format(artist, album))
 
             idx = 0
             while True:
                 # If we run out of releases, give up
                 try:
-                    release_id = requests.get(MUSICBRAINZ_URL+query).json()["releases"][idx]['id']
+                    release_id = requests.get(MUSICBRAINZ_URL+query, headers=musicbrainz_headers).json()["releases"][idx]['id']
                 except IndexError:
-                    log.info(f"No cover found for \033[3m{self.artist} – {self.title}\033[0m")
+                    log.info(f"No cover found for \033[3m{self.artist} – {self.album}\033[0m")
                     self.cover_url = None
                     break
+                except KeyError:
+                    log.fail("MusicBrainz API returned error")
 
                 cover_data = requests.get(COVERARCHIVE_URL+release_id)
 
@@ -68,11 +75,13 @@ class SongInfo(object):
 
 
 def initRPC() -> Presence:
+    log.dbug("Starting RPC")
     RPC = Presence(CLIENT_ID)
     # Discord may take a moment to start the RPC server, handle that
     sleep(3)
     try:
         RPC.connect()
+        pass
     except (ConnectionRefusedError, presence_exceptions.DiscordNotFound):
         return None
 
@@ -80,10 +89,15 @@ def initRPC() -> Presence:
 
 
 def initMPRIS() -> mpris2.Player:
+    log.dbug("Starting MPRIS2")
     try:
-        player_uri = next(mpris2.get_players_uri())
-        player = mpris2.Player(dbus_interface_info={"dbus_uri" : player_uri})
-        return player
+        players = mpris2.get_players_uri()
+        while True:
+            player_uri = next(players)
+            log.dbug(f"Found player '{player_uri.split('.')[3]}'")
+            if player_uri.split('.')[3] in PLAYER_WHITELIST:
+                player = mpris2.Player(dbus_interface_info={"dbus_uri" : player_uri})
+                return player
     except StopIteration:
         return None
 
