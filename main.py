@@ -132,7 +132,14 @@ while True:
                 or current_track.album  != album \
                 or current_track.artist != artist:
                     # Track has changed, update
-                    current_track = SongInfo(artist, album, title)
+
+                    new_cover = None
+                    # If album and artist remains same, assume we're in the same album and reuse cover
+                    if current_track != None and current_track.album == album and current_track.artist == artist:
+                        log.info("Using cached cover")
+                        new_cover = current_track.cover_url
+
+                    current_track = SongInfo(artist, album, title, cover_url=new_cover)
 
                 time_start_ms = int(time()*1000 - player.Position/1000)
                 time_end_ms   = int(time_start_ms+(player.Metadata["mpris:length"]/1000))
